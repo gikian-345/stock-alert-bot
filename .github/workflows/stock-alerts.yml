@@ -1,0 +1,55 @@
+name: Stock Alerts
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Run every 15 minutes during regular US market hours (9:00–17:00 ET approx via UTC)
+    - cron: "*/15 13-21 * * 1-5"
+    # End-of-day sweep (useful if you prefer daily mode): 21:10 UTC ≈ 17:10 ET
+    - cron: "10 21 * * 1-5"
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preflight diagnostic
+        run: |
+          python - <<'PY'
+          import os, datetime, pytz
+          required = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "SYMBOLS"]
+          missing = [k for k in required if not os.getenv(k)]
+          if missing:
+              print(f"❌ Missing env/secret(s): {missing}")
+              raise SystemExit(1)
+          from datetime import datetime
+          print("✅ All required env present.")
+          print("🕒 Current New York time:", datetime.now(tz=pytz.timezone("America/New_York")).strftime("%Y-%m-%d %H:%M:%S %Z%z"))
+          PY
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          SYMBOLS:            ${{ vars.SYMBOLS }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          SYMBOLS:            ${{ vars.SYMBOLS }}
+          THRESHOLD_PCT:      ${{ vars.THRESHOLD_PCT }}
+          MODE:               ${{ vars.MODE }}
+          DIRECTION:          ${{ vars.DIRECTION }}
+        run: |
+          python -m app.main
